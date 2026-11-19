@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/overlay.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D2Mentor Overlay</title>
+    <script type="module" src="/src/overlay.ts" defer></script>
+  </head>
+
+  <body>
+    <div class="panel" id="panel">
+      <div class="head">
+        <div class="hero" id="hero">D2Mentor</div>
+        <div class="clock" id="clock">--:--</div>
+      </div>
+
+      <div class="stats">
+        <span id="gold">—</span>
+        <span id="nw">—</span>
+        <span id="kda">—</span>
+      </div>
+
+      <div class="next">
+        <div class="label">Следующий предмет</div>
+        <div class="name" id="next-name">—</div>
+        <div class="meta" id="next-meta"></div>
+        <div class="bar"><div id="next-bar"></div></div>
+      </div>
+
+      <ul class="advice" id="advice"></ul>
+
+      <div class="foot">
+        <span id="source"></span>
+        <span class="hint">F8 — скрыть</span>
+      </div>
+    </div>
+  </body>
+</html>

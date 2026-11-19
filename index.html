@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D2Mentor</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <header>
+      <div class="brand">
+        <span class="brand-dot" id="brand-dot"></span>
+        <h1>D2Mentor</h1>
+      </div>
+      <p class="tagline">Тихий тренер. Без голоса. С цифрами.</p>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-title">GSI-сервер</div>
+        <div class="value" id="server-value">…</div>
+        <div class="hint" id="server-hint"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Dota 2</div>
+        <div class="value" id="dota-value">…</div>
+        <div class="hint" id="cfg-hint"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Связь с игрой</div>
+        <div class="value" id="conn-value">…</div>
+        <div class="hint" id="conn-hint"></div>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="btn-install" class="primary">Установить GSI-конфиг</button>
+      <button id="btn-remove">Удалить конфиг</button>
+      <button id="btn-overlay">Оверлей (F8)</button>
+      <button id="btn-sim">Тест без Dota</button>
+      <button id="btn-data" class="ghost">Папка данных</button>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span id="live-hero">Ожидание данных</span>
+        <span id="live-clock">--:--</span>
+      </div>
+      <div class="live-stats">
+        <span id="live-gold">—</span>
+        <span id="live-nw">—</span>
+        <span id="live-kda">—</span>
+      </div>
+      <div class="next">
+        <div class="next-label">Следующий предмет</div>
+        <div class="next-name" id="next-name">—</div>
+        <div class="next-meta" id="next-meta"></div>
+        <div class="bar"><div class="bar-fill" id="next-bar"></div></div>
+      </div>
+      <ul class="advice" id="live-advice"></ul>
+    </section>
+
+    <section class="log">
+      <div class="log-head">Журнал</div>
+      <pre id="log"></pre>
+    </section>
+
+    <footer>
+      Данные: официальный GSI + OpenDota. Аккаунтов, телеметрии и озвучки нет.
+      Не аффилировано с Valve. Dota 2 — торговая марка Valve Corporation.
+    </footer>
+  </body>
+</html>
