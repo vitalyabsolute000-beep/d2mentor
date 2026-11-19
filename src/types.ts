@@ -2,11 +2,21 @@ export interface NextItem {
   key: string;
   name: string;
   cost: number;
+  componentValue: number;
   goldNeeded: number;
   targetTime: number | null;
   etaSeconds: number | null;
   games: number;
   winrate: number;
+}
+
+export interface PlanRow {
+  key: string;
+  name: string;
+  cost: number;
+  targetTime: number | null;
+  owned: boolean;
+  next: boolean;
 }
 
 export interface Snapshot {
@@ -24,6 +34,7 @@ export interface Snapshot {
   level: number;
   nextItem: NextItem | null;
   upcoming: NextItem[];
+  plan: PlanRow[];
   owned: string[];
   startItems: string[];
   planSource: string;

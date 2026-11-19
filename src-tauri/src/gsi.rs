@@ -16,11 +16,23 @@ pub struct NextItem {
     pub key: String,
     pub name: String,
     pub cost: i64,
+    pub component_value: i64,
     pub gold_needed: i64,
     pub target_time: Option<i64>,
     pub eta_seconds: Option<i64>,
     pub games: u64,
     pub winrate: f64,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanRow {
+    pub key: String,
+    pub name: String,
+    pub cost: i64,
+    pub target_time: Option<i64>,
+    pub owned: bool,
+    pub next: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -40,6 +52,7 @@ pub struct Snapshot {
     pub level: i64,
     pub next_item: Option<NextItem>,
     pub upcoming: Vec<NextItem>,
+    pub plan: Vec<PlanRow>,
     pub owned: Vec<String>,
     pub start_items: Vec<String>,
     pub plan_source: String,
@@ -64,6 +77,7 @@ impl Default for Snapshot {
             level: 0,
             next_item: None,
             upcoming: Vec::new(),
+            plan: Vec::new(),
             owned: Vec::new(),
             start_items: Vec::new(),
             plan_source: String::new(),
@@ -169,6 +183,14 @@ pub fn start(app: AppHandle, token: String, port: u16) -> Result<GsiHandle, Stri
                 }
             } else if url == "/health" {
                 tiny_http::Response::from_string("D2Mentor GSI")
+            } else if url == "/state" {
+                match server_handle.snapshot.lock() {
+                    Ok(snap) => {
+                        let body = serde_json::to_string(&*snap).unwrap_or_else(|_| "{}".to_string());
+                        tiny_http::Response::from_string(body)
+                    }
+                    Err(_) => tiny_http::Response::from_string("{}").with_status_code(500),
+                }
             } else {
                 tiny_http::Response::from_string("not found").with_status_code(404)
             };
@@ -190,6 +212,7 @@ pub fn start(app: AppHandle, token: String, port: u16) -> Result<GsiHandle, Stri
                     snap.phase = "idle".to_string();
                     snap.next_item = None;
                     snap.upcoming.clear();
+                    snap.plan.clear();
                     snap.advice = vec!["Dota 2 не присылает данные. Запусти игру или перезайди в матч.".to_string()];
                     changed = true;
                 }
@@ -227,27 +250,39 @@ fn item_key(raw: &str) -> Option<String> {
 }
 
 fn plan(build: &HeroBuild) -> Vec<ItemInfo> {
-    if !build.timings.is_empty() {
-        build
-            .timings
-            .iter()
-            .map(|t| ItemInfo {
-                key: t.key.clone(),
-                name: t.name.clone(),
-                cost: t.cost,
-            })
-            .collect()
-    } else {
-        let mut out = Vec::new();
-        for list in [&build.early, &build.mid, &build.late] {
-            for item in list {
-                if !out.iter().any(|i: &ItemInfo| i.key == item.key) {
-                    out.push(item.clone());
-                }
+    let mut out: Vec<ItemInfo> = build
+        .timings
+        .iter()
+        .map(|t| ItemInfo {
+            key: t.key.clone(),
+            name: t.name.clone(),
+            cost: t.cost,
+            components: t.components.clone(),
+        })
+        .collect();
+
+    // Если таймингов мало — добиваем стадиями, но только готовыми предметами,
+    // чтобы в плане не мелькали отдельные компоненты.
+    for list in [&build.early, &build.mid, &build.late] {
+        for item in list {
+            if item.cost < 1000 {
+                continue;
             }
+            if out.iter().any(|i| i.key == item.key) {
+                continue;
+            }
+            out.push(item.clone());
         }
-        out
     }
+    out
+}
+
+fn component_credit(item: &ItemInfo, owned: &HashSet<&str>) -> i64 {
+    item.components
+        .iter()
+        .filter(|c| owned.contains(c.key.as_str()))
+        .map(|c| c.cost)
+        .sum()
 }
 
 fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
@@ -272,7 +307,7 @@ fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
     .to_string();
 
     let game_time = map
-        .and_then(|m| m.get("game_time").or_else(|| m.get("clock_time")))
+        .and_then(|m| m.get("clock_time").or_else(|| m.get("game_time")))
         .and_then(|v| v.as_i64())
         .unwrap_or(0);
 
@@ -384,7 +419,9 @@ fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
             .get(item.key.as_str())
             .copied()
             .unwrap_or((0, 0.0));
-        let gold_needed = (item.cost - gold).max(0);
+        let component_value = component_credit(item, &owned_set);
+        let remaining_cost = (item.cost - component_value).max(0);
+        let gold_needed = (remaining_cost - gold).max(0);
         let eta_seconds = if item.cost > 0 && gold_needed > 0 && gpm > 0 {
             Some((gold_needed as f64 * 60.0 / gpm as f64).round() as i64)
         } else if gold_needed == 0 {
@@ -396,6 +433,7 @@ fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
             key: item.key.clone(),
             name: item.name.clone(),
             cost: item.cost,
+            component_value,
             gold_needed,
             target_time: target,
             eta_seconds,
@@ -410,6 +448,20 @@ fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
     snapshot.next_item = upcoming.first().cloned();
     snapshot.upcoming = upcoming;
 
+    let next_key = snapshot.next_item.as_ref().map(|n| n.key.clone());
+    snapshot.plan = order
+        .iter()
+        .take(8)
+        .map(|item| PlanRow {
+            key: item.key.clone(),
+            name: item.name.clone(),
+            cost: item.cost,
+            target_time: timing.get(item.key.as_str()).map(|t| *t as i64),
+            owned: owned_set.contains(item.key.as_str()),
+            next: next_key.as_deref() == Some(item.key.as_str()),
+        })
+        .collect();
+
     let mut advice: Vec<String> = Vec::new();
     match phase.as_str() {
         "pick" => {
@@ -422,10 +474,18 @@ fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
         "game" => {
             if let Some(next) = snapshot.next_item.clone() {
                 let mut line = if next.cost > 0 {
-                    format!(
-                        "Дальше: {} — {} золота (есть {}, не хватает {}).",
-                        next.name, next.cost, gold, next.gold_needed
-                    )
+                    let parts = if next.component_value > 0 {
+                        format!(
+                            "Дальше: {} — {} золота (собрано на {}, есть {}, не хватает {}).",
+                            next.name, next.cost, next.component_value, gold, next.gold_needed
+                        )
+                    } else {
+                        format!(
+                            "Дальше: {} — {} золота (есть {}, не хватает {}).",
+                            next.name, next.cost, gold, next.gold_needed
+                        )
+                    };
+                    parts
                 } else {
                     format!("Дальше: {}.", next.name)
                 };
@@ -456,7 +516,7 @@ fn build_snapshot(value: &Value, build: Option<&HeroBuild>) -> Snapshot {
                 }
                 if next.games >= 30 {
                     advice.push(format!(
-                        "Статистика: предмет берут в {:.0}% матчей ({} игр).",
+                        "С этим предметом винрейт {:.0}% ({} игр по OpenDota).",
                         next.winrate * 100.0,
                         next.games
                     ));

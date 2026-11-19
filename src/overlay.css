@@ -108,6 +108,62 @@ body {
   transition: width 300ms ease;
 }
 
+.plan {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  color: #8f98ab;
+}
+
+.plan li:last-child {
+  border-bottom: none;
+}
+
+.plan li.owned {
+  color: #5f6a7e;
+  text-decoration: line-through;
+}
+
+.plan li.owned .plan-meta {
+  color: #4cc38a;
+  text-decoration: none;
+}
+
+.plan li.next {
+  color: #f0f2f7;
+  font-weight: 600;
+}
+
+.plan li.next .plan-meta {
+  color: #f2c14e;
+}
+
+.plan-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-meta {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: #6f788b;
+  flex: none;
+}
+
 .advice {
   list-style: none;
   margin: 12px 0 0;

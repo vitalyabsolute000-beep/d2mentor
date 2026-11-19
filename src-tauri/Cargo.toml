@@ -1,6 +1,6 @@
 [package]
 name = "d2mentor"
-version = "0.1.0"
+version = "0.1.1"
 description = "D2Mentor — quiet Dota 2 overlay coach (GSI + OpenDota)"
 authors = ["you"]
 edition = "2024"

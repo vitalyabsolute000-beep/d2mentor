@@ -34,6 +34,9 @@ function render(snapshot: Snapshot) {
     } else if (next.cost > 0) {
       parts.push("можно покупать");
     }
+    if (next.componentValue > 0) {
+      parts.push(`части на ${gold(next.componentValue)}`);
+    }
     if (next.etaSeconds && next.etaSeconds > 0) {
       parts.push(`ETA ${clock(next.etaSeconds)}`);
     }
@@ -42,13 +45,37 @@ function render(snapshot: Snapshot) {
     }
     el("next-meta").textContent = parts.join(" · ");
     const progress =
-      next.cost > 0 ? Math.max(0, Math.min(1, snapshot.gold / next.cost)) : 0;
+      next.cost > 0
+        ? Math.max(0, Math.min(1, (snapshot.gold + next.componentValue) / next.cost))
+        : 0;
     bar.style.width = `${(progress * 100).toFixed(1)}%`;
   } else {
     el("next-name").textContent = "—";
     el("next-meta").textContent = snapshot.connected ? "" : "Нет данных";
     bar.style.width = "0%";
   }
+
+  const planEl = el<HTMLUListElement>("plan");
+  planEl.replaceChildren(
+    ...(snapshot.connected ? snapshot.plan : []).map((row) => {
+      const li = document.createElement("li");
+      li.className = row.owned ? "owned" : row.next ? "next" : "later";
+      const name = document.createElement("span");
+      name.className = "plan-name";
+      name.textContent = row.name;
+      const meta = document.createElement("span");
+      meta.className = "plan-meta";
+      meta.textContent = row.owned
+        ? "✓"
+        : row.targetTime != null
+          ? clock(row.targetTime)
+          : row.next
+            ? "сейчас"
+            : "";
+      li.append(name, meta);
+      return li;
+    }),
+  );
 
   const advice = el<HTMLUListElement>("advice");
   advice.replaceChildren(

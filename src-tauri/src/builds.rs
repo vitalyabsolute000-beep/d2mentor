@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CACHE_TTL: u64 = 12 * 3600;
+const META_VERSION: u32 = 2;
+const BUILD_VERSION: u32 = 2;
 const ITEMS_URL: &str = "https://raw.githubusercontent.com/odota/dotaconstants/master/build/items.json";
 const ITEM_IDS_URL: &str =
     "https://raw.githubusercontent.com/odota/dotaconstants/master/build/item_ids.json";
@@ -11,10 +13,19 @@ const HEROES_URL: &str = "https://api.opendota.com/api/heroes";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct Component {
+    pub key: String,
+    pub cost: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ItemInfo {
     pub key: String,
     pub name: String,
     pub cost: i64,
+    #[serde(default)]
+    pub components: Vec<Component>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -26,11 +37,14 @@ pub struct TimedItem {
     pub avg_time: f64,
     pub games: u64,
     pub winrate: f64,
+    #[serde(default)]
+    pub components: Vec<Component>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct HeroBuild {
+    pub version: u32,
     pub hero_id: u32,
     pub hero_name: String,
     pub localized_name: String,
@@ -44,6 +58,8 @@ pub struct HeroBuild {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Dicts {
+    #[serde(default)]
+    pub version: u32,
     pub fetched_at: u64,
     pub items: HashMap<String, ItemInfo>,
     pub id_to_key: HashMap<String, String>,
@@ -101,18 +117,20 @@ pub fn dicts(force: bool) -> Result<Dicts, String> {
     let path = data_dir().join("meta.json");
     if !force {
         if let Some(d) = read_fresh::<Dicts>(&path, CACHE_TTL) {
-            if !d.items.is_empty() && !d.heroes.is_empty() {
+            if d.version == META_VERSION && !d.items.is_empty() && !d.heroes.is_empty() {
                 return Ok(d);
             }
         }
     }
 
     let mut d = Dicts {
+        version: META_VERSION,
         fetched_at: now(),
         ..Default::default()
     };
 
     let items = get_json(ITEMS_URL)?;
+    let mut raw_components: HashMap<String, Vec<String>> = HashMap::new();
     if let Some(obj) = items.as_object() {
         for (key, value) in obj {
             let name = value
@@ -127,8 +145,33 @@ pub fn dicts(force: bool) -> Result<Dicts, String> {
                     key: key.clone(),
                     name,
                     cost,
+                    components: Vec::new(),
                 },
             );
+            if let Some(arr) = value.get("components").and_then(|v| v.as_array()) {
+                let keys: Vec<String> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter(|k| !k.starts_with("recipe"))
+                    .map(|k| k.to_string())
+                    .collect();
+                if !keys.is_empty() {
+                    raw_components.insert(key.clone(), keys);
+                }
+            }
+        }
+    }
+    for (key, component_keys) in raw_components {
+        let components: Vec<Component> = component_keys
+            .iter()
+            .filter_map(|k| d.items.get(k))
+            .map(|info| Component {
+                key: info.key.clone(),
+                cost: info.cost,
+            })
+            .collect();
+        if let Some(item) = d.items.get_mut(&key) {
+            item.components = components;
         }
     }
     if d.items.is_empty() {
@@ -177,7 +220,10 @@ pub fn dicts(force: bool) -> Result<Dicts, String> {
 pub fn get_build(hero_id: u32) -> Result<HeroBuild, String> {
     let path = data_dir().join("builds").join(format!("{hero_id}.json"));
     if let Some(b) = read_fresh::<HeroBuild>(&path, CACHE_TTL) {
-        if b.hero_id == hero_id && (!b.early.is_empty() || !b.timings.is_empty()) {
+        if b.version == BUILD_VERSION
+            && b.hero_id == hero_id
+            && (!b.early.is_empty() || !b.timings.is_empty())
+        {
             return Ok(b);
         }
     }
@@ -241,6 +287,7 @@ fn fetch_build(hero_id: u32, dicts: &Dicts) -> Result<HeroBuild, String> {
     ))?;
 
     let mut build = HeroBuild {
+        version: BUILD_VERSION,
         hero_id,
         hero_name: hero.name,
         localized_name: if hero.localized_name.is_empty() {
@@ -292,19 +339,24 @@ fn fetch_build(hero_id: u32, dicts: &Dicts) -> Result<HeroBuild, String> {
 
             let mut list: Vec<TimedItem> = agg
                 .into_iter()
-                .filter(|(_, (games, _, _))| *games >= 30)
                 .filter_map(|(key, (games, wins, weighted))| {
                     let info = dicts.items.get(&key)?;
                     Some(TimedItem {
-                        key: key.clone(),
+                        key,
                         name: info.name.clone(),
                         cost: info.cost,
                         avg_time: weighted / games as f64,
                         games,
                         winrate: wins as f64 / games as f64,
+                        components: info.components.clone(),
                     })
                 })
                 .collect();
+
+            // Отсекаем ситуативные предметы с крошечной выборкой.
+            let max_games = list.iter().map(|t| t.games).max().unwrap_or(0);
+            let threshold = ((max_games as f64) * 0.03).max(50.0) as u64;
+            list.retain(|t| t.games >= threshold);
 
             list.sort_by(|a, b| a.avg_time.partial_cmp(&b.avg_time).unwrap_or(std::cmp::Ordering::Equal));
             list.truncate(30);

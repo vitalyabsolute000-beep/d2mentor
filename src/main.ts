@@ -82,6 +82,9 @@ function renderSnapshot(snapshot: Snapshot) {
         parts.push("можно покупать");
       }
     }
+    if (next.componentValue > 0) {
+      parts.push(`части на ${gold(next.componentValue)}`);
+    }
     if (next.etaSeconds && next.etaSeconds > 0) {
       parts.push(`ETA ${clock(next.etaSeconds)}`);
     }
@@ -90,13 +93,37 @@ function renderSnapshot(snapshot: Snapshot) {
     }
     nextMeta.textContent = parts.join(" · ");
     const progress =
-      next.cost > 0 ? Math.max(0, Math.min(1, snapshot.gold / next.cost)) : 0;
+      next.cost > 0
+        ? Math.max(0, Math.min(1, (snapshot.gold + next.componentValue) / next.cost))
+        : 0;
     bar.style.width = `${(progress * 100).toFixed(1)}%`;
   } else {
     nextName.textContent = snapshot.connected ? "План пуст" : "—";
     nextMeta.textContent = snapshot.connected ? "" : "Нет данных из игры";
     bar.style.width = "0%";
   }
+
+  const planList = el<HTMLUListElement>("live-plan");
+  planList.replaceChildren(
+    ...(snapshot.connected ? snapshot.plan : []).map((row) => {
+      const li = document.createElement("li");
+      li.className = row.owned ? "owned" : row.next ? "next" : "later";
+      const name = document.createElement("span");
+      name.className = "plan-name";
+      name.textContent = row.name;
+      const meta = document.createElement("span");
+      meta.className = "plan-meta";
+      meta.textContent = row.owned
+        ? "✓"
+        : row.targetTime != null
+          ? clock(row.targetTime)
+          : row.next
+            ? "сейчас"
+            : "";
+      li.append(name, meta);
+      return li;
+    }),
+  );
 
   const advice = el<HTMLUListElement>("live-advice");
   advice.replaceChildren(
